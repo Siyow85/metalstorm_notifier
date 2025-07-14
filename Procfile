@@ -1,1 +1,1 @@
-worker: python metalstorm_notifier.py
+web: gunicorn main:app
