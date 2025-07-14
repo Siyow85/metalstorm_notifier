@@ -38,7 +38,7 @@ async def get_latest_code():
     return None  # اگر هیچ کدی نباشه
 
 def main():
-    app = ApplicationBuilder().token("توکن رباتت").build()
+    app = ApplicationBuilder().token("7737983627:AAGdTwXHkeGq3bTekUPbaBfrUHwt7x7gA9U").build()
 
     app.add_handler(CommandHandler("start", start))
 
