@@ -1,50 +1,22 @@
-import requests
-import time
 import random
-import os
+from telegram import Update
+from telegram.ext import CommandHandler, CallbackContext
 
-BOT_TOKEN = '7737983627:AAGdTwXHkeGq3bTekUPbaBfrUHwt7x7gA9U'
-BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
+# دیتابیس ساده برای ثبت کاربران
+sent_greetings = set()
 
-# پیام‌های خوش‌آمدگویی رندوم
-GREETINGS = [
-    "سلام 👋",
-    "درود بر تو ✨",
-    "خوش اومدی 😄",
-    "هی رفیق! 👊",
-    "سلام قهرمان 💪",
-    "سلام به Metalstorm‌باز حرفه‌ای! 🚀",
-    "سلااام 😎",
-    "خوش اومدی به ربات کدت یاب 🔍",
-]
+def start(update: Update, context: CallbackContext):
+    user_id = update.effective_user.id
+    if user_id not in sent_greetings:
+        greetings = ["سلام 😊", "درود 👋", "سلام رفیق 😎", "خوش اومدی 🌟", "های 👋", "سلام دوست من ❤️"]
+        greeting_message = random.choice(greetings)
+        context.bot.send_message(chat_id=user_id, text=greeting_message)
+        sent_greetings.add(user_id)
+    
+    # ارسال وضعیت کد
+    code = get_latest_code()  # تابعی که بررسی می‌کنه کد جدید هست یا نه
+    if code:
+        context.bot.send_message(chat_id=user_id, text=f"کد فعال جدید✅: {code}")
+    else:
+        context.bot.send_message(chat_id=user_id, text="فعلاً کد فعالی وجود ندارد.")
 
-def send_message(chat_id, text):
-    url = f"{BASE_URL}/sendMessage"
-    payload = {'chat_id': chat_id, 'text': text}
-    requests.post(url, data=payload)
-
-def get_updates(offset=None):
-    url = f"{BASE_URL}/getUpdates"
-    params = {'timeout': 100, 'offset': offset}
-    response = requests.get(url, params=params)
-    return response.json()
-
-def main():
-    last_update_id = None
-    while True:
-        updates = get_updates(last_update_id)
-        if updates["ok"] and updates["result"]:
-            for update in updates["result"]:
-                last_update_id = update["update_id"] + 1
-                message = update.get("message")
-                if message:
-                    chat_id = message["chat"]["id"]
-                    text = message.get("text", "")
-                    if text == "/start":
-                        greeting = random.choice(GREETINGS)
-                        send_message(chat_id, greeting)
-
-        time.sleep(1)
-
-if __name__ == "__main__":
-    main()
