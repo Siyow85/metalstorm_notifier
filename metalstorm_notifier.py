@@ -158,3 +158,34 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, CallbackContext
+
+BOT_TOKEN = '7737983627:AAGdTwXHkeGq3bTekUPbaBfrUHwt7x7gA9U'
+
+def start(update: Update, context: CallbackContext):
+    keyboard = [
+        [InlineKeyboardButton("کد Metalstorm", callback_data='metalstorm_code')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    update.message.reply_text('سلام! لطفا یک گزینه را انتخاب کن:', reply_markup=reply_markup)
+
+def button(update: Update, context: CallbackContext):
+    query = update.callback_query
+    query.answer()
+    if query.data == 'metalstorm_code':
+        # اینجا کد ارسال کدهای متال استورم را قرار بده
+        query.edit_message_text(text="کد جدید Metalstorm: XYZ123")
+
+def main():
+    updater = Updater(BOT_TOKEN)
+    dp = updater.dispatcher
+    dp.add_handler(CommandHandler('start', start))
+    dp.add_handler(CallbackQueryHandler(button))
+    updater.start_polling()
+    updater.idle()
+
+if __name__ == '__main__':
+    main()
+
