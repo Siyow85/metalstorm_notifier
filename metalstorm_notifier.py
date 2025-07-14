@@ -4,99 +4,121 @@ import random
 import json
 from datetime import datetime
 
-BOT_TOKEN = 'توکن شما'
-CHAT_ID = 'چت آیدی شما'
+BOT_TOKEN = '7737983627:AAGdTwXHkeGq3bTekUPbaBfrUHwt7x7gA9U'
+API_URL = f'https://api.telegram.org/bot{BOT_TOKEN}/'
+USER_DATA_FILE = 'user_data.json'
+LAST_CODE_FILE = 'last_code.txt'
 
-# سلام‌ رندوم با ایموجی
-greetings = [
-    "سلام دوست من! 👋",
-    "درود بر تو! ✨",
-    "خوش اومدی قهرمان! 🚀",
-    "سلام به جنگجوی فلزی! 🤖",
-    "هی، وقت کد جدیده؟ 🔥",
+GREETING_MESSAGES = [
+    "سلام عزیز دل 🤍",
+    "درود رفیق 👋",
+    "سلام به گل خوش اومدی 🌸",
+    "درود جنگجو 🔥",
+    "سلام قهرمان 🛡️",
 ]
 
-last_sent_code_file = "last_code.txt"
+# ----------------------- ابزار ذخیره‌سازی -----------------------
+def load_user_data():
+    try:
+        with open(USER_DATA_FILE, 'r') as f:
+            return json.load(f)
+    except:
+        return {}
 
-# سایت‌هایی که باید بررسی شوند
-def fetch_codes_from_sources():
+def save_user_data(data):
+    with open(USER_DATA_FILE, 'w') as f:
+        json.dump(data, f)
+
+def load_last_code():
+    try:
+        with open(LAST_CODE_FILE, 'r') as f:
+            return f.read().strip()
+    except:
+        return ''
+
+def save_last_code(code):
+    with open(LAST_CODE_FILE, 'w') as f:
+        f.write(code)
+
+# ----------------------- ارسال پیام -----------------------
+def send_message(chat_id, text):
+    requests.post(API_URL + 'sendMessage', data={'chat_id': chat_id, 'text': text})
+
+# ----------------------- بررسی سایت‌ها -----------------------
+def fetch_code_sources():
     codes = []
 
-    # Reddit
+    # مثال از Reddit
     try:
-        reddit = requests.get("https://www.reddit.com/r/MetalstormGame/new.json", headers={'User-agent': 'Mozilla/5.0'})
-        posts = reddit.json()['data']['children']
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        r = requests.get('https://www.reddit.com/r/MetalstormGame/new.json', headers=headers)
+        posts = r.json()['data']['children']
         for post in posts:
             title = post['data']['title']
-            if "code" in title.lower():
+            if "code" in title.lower() or "redeem" in title.lower():
                 codes.append(title.strip())
-    except Exception as e:
-        print("Reddit error:", e)
+    except:
+        pass
 
-    # سایت دوم (مثال: پیج X سابق یا سایت دیگر)
-    # try:
-    #     response = requests.get("https://...")
-    #     ... بررسی محتوا و اضافه کردن کدها به لیست codes
-    # except:
-    #     pass
+    # مثال دیگر: Pastebin
+    try:
+        r = requests.get("https://pastebin.com/raw/metalstorm")
+        lines = r.text.splitlines()
+        for line in lines:
+            if len(line.strip()) > 6:
+                codes.append(line.strip())
+    except:
+        pass
 
     return codes
 
-def get_last_sent_code():
-    try:
-        with open(last_sent_code_file, "r") as f:
-            return f.read().strip()
-    except FileNotFoundError:
-        return ""
+# ----------------------- مدیریت /start -----------------------
+def handle_start(chat_id):
+    users = load_user_data()
+    last_code = load_last_code()
 
-def set_last_sent_code(code):
-    with open(last_sent_code_file, "w") as f:
-        f.write(code)
+    if chat_id not in users:
+        greeting = random.choice(GREETING_MESSAGES)
+        send_message(chat_id, greeting)
+        users[chat_id] = {"started": True}
+        save_user_data(users)
 
-# ارسال پیام به کاربر
-def send_message(text):
-    url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage'
-    data = {'chat_id': CHAT_ID, 'text': text}
-    requests.post(url, data=data)
-
-# بررسی اینکه پیام /start فرستاده شده یا نه
-def check_start():
-    url = f'https://api.telegram.org/bot{BOT_TOKEN}/getUpdates'
-    res = requests.get(url)
-    updates = res.json().get("result", [])
-
-    for update in updates[::-1]:
-        message = update.get("message", {})
-        text = message.get("text", "").lower()
-        if text == "/start":
-            user_id = message["chat"]["id"]
-            return user_id
-    return None
-
-# بررسی و ارسال کد جدید
-def check_and_send_code():
-    codes = fetch_codes_from_sources()
-    if not codes:
-        send_message("فعلاً کد فعالی وجود ندارد 🤍")
-        return
-
-    latest_code = codes[0]
-    last_sent_code = get_last_sent_code()
-
-    if latest_code != last_sent_code:
-        send_message(f"کد فعال جدید ✅:\n\n{latest_code}")
-        set_last_sent_code(latest_code)
+    if last_code:
+        send_message(chat_id, f"کد فعال فعلی:\n\n{last_code}")
     else:
-        send_message(f"آخرین کد فعال:\n{latest_code}")
+        send_message(chat_id, "فعلاً کد فعالی وجود ندارد 🤍")
 
-# اجرای دائمی ربات
-def run_bot():
-    greeted = False
+# ----------------------- بررسی آپدیت ها و دریافت پیام جدید -----------------------
+def get_updates(offset=None):
+    params = {'timeout': 100, 'offset': offset}
+    response = requests.get(API_URL + 'getUpdates', params=params)
+    return response.json()['result']
+
+# ----------------------- حلقه اصلی -----------------------
+def main():
+    print("🤖 ربات در حال اجراست...")
+    offset = None
+    last_code = load_last_code()
+
     while True:
-        user_id = check_start()
-        if user_id and not greeted:
-            greeting = random.choice(greetings)
-            send_message(greeting)
-            check_and_send_code()
-            greeted = True
-        time.sleep(30)  # هر ۳۰ ثانیه بررسی کند
+        # دریافت پیام های تلگرام
+        updates = get_updates(offset)
+        for update in updates:
+            offset = update['update_id'] + 1
+            if 'message' in update:
+                chat_id = str(update['message']['chat']['id'])
+                text = update['message'].get('text', '').lower()
+                if text == '/start':
+                    handle_start(chat_id)
+
+        # بررسی کدهای جدید
+        new_codes = fetch_code_sources()
+        for code in new_codes:
+            if code != last_code:
+                print(f"کد جدید یافت شد: {code}")
+                users = load_user_data()
+                for user_id in users.keys():
+                    send_message(user_id, f"کد فعال جدید ✅:\n\n{code}")
+                last_code = code
+                save_last_code(code)
+        time.sleep(60)
