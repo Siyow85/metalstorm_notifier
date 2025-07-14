@@ -7,7 +7,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, CallbackContext
 
 # ======= توکن ربات خودت رو اینجا جایگزین کن ========
-BOT_TOKEN = 'توکن_ربات_تو_اینجا'
+BOT_TOKEN = '7737983627:AAGdTwXHkeGq3bTekUPbaBfrUHwt7x7gA9U'
 
 # فایل ذخیره شناسه کاربران و آخرین کد
 USERS_FILE = 'users.txt'
