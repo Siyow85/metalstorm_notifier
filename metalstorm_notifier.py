@@ -1,22 +1,77 @@
+import requests
+import json
 import random
-from telegram import Update
-from telegram.ext import CommandHandler, CallbackContext
+import os
+import time
 
-# دیتابیس ساده برای ثبت کاربران
-sent_greetings = set()
+BOT_TOKEN = '7737983627:AAGdTwXHkeGq3bTekUPbaBfrUHwt7x7gA9U'
+CHAT_ID = '7554650927'
+SENT_HELLO_FILE = 'hello_sent.json'
+LAST_CODE_FILE = 'last_code.txt'
 
-def start(update: Update, context: CallbackContext):
-    user_id = update.effective_user.id
-    if user_id not in sent_greetings:
-        greetings = ["سلام 😊", "درود 👋", "سلام رفیق 😎", "خوش اومدی 🌟", "های 👋", "سلام دوست من ❤️"]
-        greeting_message = random.choice(greetings)
-        context.bot.send_message(chat_id=user_id, text=greeting_message)
-        sent_greetings.add(user_id)
-    
-    # ارسال وضعیت کد
-    code = get_latest_code()  # تابعی که بررسی می‌کنه کد جدید هست یا نه
-    if code:
-        context.bot.send_message(chat_id=user_id, text=f"کد فعال جدید✅: {code}")
+greetings = [
+    "سلام دوست عزیز! 😊",
+    "درود بر تو قهرمان! ⚔️",
+    "خوش اومدی! 😎",
+    "هی رفیق! 👋",
+    "سلام! آماده‌ای؟ 🚀"
+]
+
+def send_message(text):
+    url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage'
+    payload = {'chat_id': CHAT_ID, 'text': text}
+    requests.post(url, data=payload)
+
+def send_greeting_once():
+    if not os.path.exists(SENT_HELLO_FILE):
+        greeting = random.choice(greetings)
+        send_message(greeting)
+        with open(SENT_HELLO_FILE, 'w') as f:
+            json.dump({'sent': True}, f)
+
+def fetch_codes_from_sources():
+    """
+    این تابع کدهای جدید رو از منابع مختلف می‌گیره.
+    فعلاً نمونه اولیه فقط از Reddit پیاده‌سازی شده.
+    """
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        response = requests.get('https://www.reddit.com/r/MetalstormGame/new/.json', headers=headers, timeout=10)
+        posts = response.json()['data']['children']
+        codes = []
+        for post in posts:
+            title = post['data']['title']
+            if 'code' in title.lower():
+                codes.append(title.strip())
+        return codes
+    except Exception as e:
+        print("خطا در دریافت کد:", e)
+        return []
+
+def get_last_sent_code():
+    if os.path.exists(LAST_CODE_FILE):
+        with open(LAST_CODE_FILE, 'r') as f:
+            return f.read().strip()
+    return ""
+
+def save_last_sent_code(code):
+    with open(LAST_CODE_FILE, 'w') as f:
+        f.write(code)
+
+def main():
+    send_greeting_once()
+
+    codes = fetch_codes_from_sources()
+    if not codes:
+        send_message("فعلاً کد فعالی وجود ندارد ❌")
+        return
+
+    last_code = get_last_sent_code()
+    if codes[0] != last_code:
+        send_message(f"کد فعال جدید ✅:\n\n{codes[0]}")
+        save_last_sent_code(codes[0])
     else:
-        context.bot.send_message(chat_id=user_id, text="فعلاً کد فعالی وجود ندارد.")
+        send_message("فعلاً کد جدیدی منتشر نشده ❌")
 
+if __name__ == '__main__':
+    main()
