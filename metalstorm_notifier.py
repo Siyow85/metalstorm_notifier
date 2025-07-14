@@ -1,3 +1,34 @@
+import random
+from telegram.ext import Updater, CommandHandler
+
+BOT_TOKEN = '7737983627:AAGdTwXHkeGq3bTekUPbaBfrUHwt7x7gA9U'
+
+def start(update, context):
+    greetings = [
+        "سلام! 😊",
+        "درود! 👋",
+        "های! 😄",
+        "سلام رفیق! ✌️",
+        "سلام به شما 🌟",
+        "چطوری؟ 🐱‍🏍",
+        "هی سلام! 🚀"
+    ]
+    message = random.choice(greetings)
+    context.bot.send_message(chat_id=update.effective_chat.id, text=message)
+
+def main():
+    updater = Updater(BOT_TOKEN, use_context=True)
+    dp = updater.dispatcher
+
+    dp.add_handler(CommandHandler("start", start))
+
+    updater.start_polling()
+    updater.idle()
+
+if __name__ == '__main__':
+    main()
+
+
 import requests
 import time
 from bs4 import BeautifulSoup
