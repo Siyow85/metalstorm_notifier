@@ -1,43 +1,74 @@
 import requests
 import time
-from bs4 import BeautifulSoup
+import random
+from flask import Flask, request
+from threading import Thread
 
 BOT_TOKEN = '7737983627:AAGdTwXHkeGq3bTekUPbaBfrUHwt7x7gA9U'
-CHAT_ID = '7554650927'
-REDDIT_URL = 'https://www.reddit.com/r/MetalstormGame/new/'
+API_URL = f'https://api.telegram.org/bot{BOT_TOKEN}'
+app = Flask(__name__)
 
-HEADERS = {'User-Agent': 'Mozilla/5.0'}
-SENT_CODES = set()
+users = set()
+sent_greeting = set()
+latest_code = None
 
-# پیام تستی بعد از اجرای بات
-def send_test_message():
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": "✅ بات با موفقیت در Railway اجرا شد و فعاله!"}
-    requests.post(url, data=payload)
+greetings = ['سلام 🌸', 'درود ✨', 'سلام رفیق 🤍', 'هَی 👋', 'چطوری 😎']
 
-# ارسال پیام به تلگرام
-def send_to_telegram(message):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": message}
-    requests.post(url, data=payload)
+def get_new_code():
+    sources = [
+        'https://www.reddit.com/r/MetalstormGame/new.json?limit=5',
+        # در آینده می‌توان منابع دیگر اضافه کرد (مانند APIهای دیسکورد و کانال‌های دیگر)
+    ]
+    headers = {'User-agent': 'Mozilla/5.0'}
+    for url in sources:
+        try:
+            r = requests.get(url, headers=headers, timeout=10)
+            posts = r.json()['data']['children']
+            for post in posts:
+                title = post['data']['title']
+                if 'code' in title.lower():
+                    return title
+        except Exception:
+            continue
+    return None
 
-# بررسی کدهای جدید در Reddit
-def check_for_codes():
-    try:
-        response = requests.get(REDDIT_URL, headers=HEADERS)
-        soup = BeautifulSoup(response.text, 'html.parser')
-        titles = soup.find_all('h3')
-        for title in titles:
-            text = title.get_text()
-            if "code" in text.lower() or "redeem" in text.lower():
-                if text not in SENT_CODES:
-                    SENT_CODES.add(text)
-                    send_to_telegram(f"🎮 کد جدید پیدا شد:\n\n{text}")
-    except Exception as e:
-        print("خطا:", e)
+def send_message(chat_id, text):
+    url = f'{API_URL}/sendMessage'
+    requests.post(url, data={'chat_id': chat_id, 'text': text})
 
-if __name__ == "__main__":
-    send_test_message()
+@app.route(f'/{BOT_TOKEN}', methods=['POST'])
+def receive_update():
+    global latest_code
+    data = request.get_json()
+    if 'message' in data:
+        chat_id = data['message']['chat']['id']
+        text = data['message'].get('text', '')
+
+        users.add(chat_id)
+        if text.lower() == '/start':
+            if chat_id not in sent_greeting:
+                greeting = random.choice(greetings)
+                send_message(chat_id, greeting)
+                sent_greeting.add(chat_id)
+            if latest_code:
+                send_message(chat_id, f'کد فعال جدید✅\n{latest_code}')
+            else:
+                send_message(chat_id, 'فعلاً کد فعالی وجود ندارد 🤍')
+    return 'OK'
+
+def poll_new_codes():
+    global latest_code
     while True:
-        check_for_codes()
-        time.sleep(300)  # هر 5 دقیقه چک می‌کنه
+        code = get_new_code()
+        if code and code != latest_code:
+            latest_code = code
+            for user in users:
+                send_message(user, f'کد فعال جدید✅\n{latest_code}')
+        time.sleep(60)
+
+def run_bot():
+    app.run(host='0.0.0.0', port=8080)
+
+if __name__ == '__main__':
+    Thread(target=poll_new_codes).start()
+    run_bot()
