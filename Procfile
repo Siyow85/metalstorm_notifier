@@ -1,0 +1,1 @@
+worker: python metalstorm_notifier.py
