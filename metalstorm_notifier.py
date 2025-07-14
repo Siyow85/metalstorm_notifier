@@ -1,101 +1,149 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, CallbackContext
 import requests
+import time
 import json
 import os
+import random
+from bs4 import BeautifulSoup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Updater, CommandHandler, CallbackContext, MessageHandler, Filters
 
 BOT_TOKEN = '7737983627:AAGdTwXHkeGq3bTekUPbaBfrUHwt7x7gA9U'
-DATA_FILE = 'users.json'  # برای ذخیره کاربرانی که استارت زدن
-LAST_CODE_FILE = 'last_code.txt'  # برای ذخیره آخرین کد ارسال شده
+USERS_FILE = 'users.txt'
+CHECK_INTERVAL = 300  # هر 5 دقیقه چک می‌کند
+
+# لیست پیام‌های خوش آمد + ایموجی (یکی رندوم ارسال می‌شود)
+GREETINGS = [
+    "سلام 😊",
+    "درود 🌟",
+    "سلامتی 💚",
+    "درود بر شما 🙌",
+    "خوش آمدید 🤗",
+]
+
+def save_user(chat_id: int):
+    if not os.path.exists(USERS_FILE):
+        with open(USERS_FILE, 'w', encoding='utf-8') as f:
+            pass
+    with open(USERS_FILE, 'r', encoding='utf-8') as f:
+        users = f.read().splitlines()
+    if str(chat_id) not in users:
+        with open(USERS_FILE, 'a', encoding='utf-8') as f:
+            f.write(f"{chat_id}\n")
 
 def load_users():
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, 'r') as f:
-            return json.load(f)
-    return []
+    if not os.path.exists(USERS_FILE):
+        return []
+    with open(USERS_FILE, 'r', encoding='utf-8') as f:
+        return f.read().splitlines()
 
-def save_users(users):
-    with open(DATA_FILE, 'w') as f:
-        json.dump(users, f)
+# --- استخراج کد از سایت رسمی فرضی Metalstorm ---
+def fetch_latest_code_metalstorm():
+    url = 'https://metalstormgame.com/promocodes'  # لینک فرضی (لطفا اصلاح شود)
+    try:
+        r = requests.get(url, timeout=10)
+        r.raise_for_status()
+        soup = BeautifulSoup(r.text, 'html.parser')
+        code_div = soup.find('div', class_='promo-code')
+        if code_div:
+            code = code_div.text.strip()
+            return code
+    except Exception as e:
+        print(f"خطا در دریافت کد از سایت رسمی: {e}")
+    return None
 
-def load_last_code():
-    if os.path.exists(LAST_CODE_FILE):
-        with open(LAST_CODE_FILE, 'r') as f:
+# --- استخراج کد از Reddit ---
+def fetch_latest_code_reddit():
+    url = 'https://www.reddit.com/r/MetalstormGame/new/.json?limit=5'
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    try:
+        r = requests.get(url, headers=headers, timeout=10)
+        r.raise_for_status()
+        data = r.json()
+        for post in data['data']['children']:
+            title = post['data']['title']
+            if 'CODE' in title.upper():
+                words = title.split()
+                for w in words:
+                    if len(w) >= 6 and w.isalnum():
+                        return w.strip()
+    except Exception as e:
+        print(f"خطا در دریافت کد از Reddit: {e}")
+    return None
+
+# --- تابع اصلی گرفتن کد ---
+def fetch_latest_code():
+    code = fetch_latest_code_metalstorm()
+    if code:
+        return code
+    code = fetch_latest_code_reddit()
+    if code:
+        return code
+    return None
+
+# ذخیره کد فعلی در فایل برای مقایسه و تشخیص کد جدید
+CODE_FILE = 'last_code.txt'
+
+def get_last_code():
+    if os.path.exists(CODE_FILE):
+        with open(CODE_FILE, 'r', encoding='utf-8') as f:
             return f.read().strip()
-    return ''
+    return None
 
 def save_last_code(code):
-    with open(LAST_CODE_FILE, 'w') as f:
+    with open(CODE_FILE, 'w', encoding='utf-8') as f:
         f.write(code)
 
-def fetch_latest_code():
-    # اینجا باید کدهای جدید رو از سایت‌های رسمی و منابع مختلف بگیری
-    # الان یه نمونه فرضی کد هست که در عمل باید API یا وبسایت‌ها رو پارس کنی
-    # برای مثال فقط یه کد ثابت باز می‌گردونه:
-    return "METALSTORM2025"
-
+# --- هندلر /start ---
 def start(update: Update, context: CallbackContext):
+    chat_id = update.effective_chat.id
     users = load_users()
-    chat_id = str(update.message.chat_id)
-    if chat_id not in users:
-        users.append(chat_id)
-        save_users(users)
+    if str(chat_id) not in users:
+        save_user(chat_id)
+        greeting = random.choice(GREETINGS)
+        context.bot.send_message(chat_id=chat_id, text=greeting)
 
-    keyboard = [[InlineKeyboardButton("کد Metalstorm", callback_data='metalstorm_code')]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
-    # فقط یکبار پیام خوش‌آمد بده
-    if not context.user_data.get('started'):
-        update.message.reply_text(
-            'سلام! به ربات Metalstorm خوش آمدید. دکمه زیر را برای دریافت کدهای Metalstorm بزنید.',
-            reply_markup=reply_markup)
-        context.user_data['started'] = True
+    # ارسال آخرین کد یا پیام "کد نیست"
+    last_code = get_last_code()
+    if last_code:
+        context.bot.send_message(chat_id=chat_id, text=f"آخرین کد فعال: {last_code}")
     else:
-        # اگر قبلا استارت زده، فقط آخرین کد رو میفرسته
-        last_code = load_last_code()
-        if last_code:
-            update.message.reply_text(f"آخرین کد Metalstorm: {last_code}", reply_markup=reply_markup)
-        else:
-            update.message.reply_text("فعلاً کد فعالی وجود ندارد 🤍", reply_markup=reply_markup)
+        context.bot.send_message(chat_id=chat_id, text="فعلاً کد فعالی وجود ندارد 🤍")
 
-def button(update: Update, context: CallbackContext):
-    query = update.callback_query
-    query.answer()
-
-    if query.data == 'metalstorm_code':
-        last_code = load_last_code()
-        if last_code:
-            query.edit_message_text(text=f"کد Metalstorm:\n{last_code}")
-        else:
-            query.edit_message_text(text="فعلاً کد فعالی وجود ندارد 🤍")
-
-def notify_all_users(context: CallbackContext):
+# --- تابع اطلاع‌رسانی کد جدید به همه ---
+def notify_all_users(context: CallbackContext, new_code):
     users = load_users()
-    latest_code = fetch_latest_code()
-    last_code = load_last_code()
+    for user_id in users:
+        try:
+            context.bot.send_message(chat_id=int(user_id), text=f"کد فعال جدید ✅:\n{new_code}")
+        except Exception as e:
+            print(f"خطا در ارسال پیام به کاربر {user_id}: {e}")
 
-    if latest_code != last_code:
-        save_last_code(latest_code)
-        for chat_id in users:
-            try:
-                context.bot.send_message(chat_id=int(chat_id), text=f"کد فعال جدید Metalstorm ✅:\n{latest_code}")
-            except Exception as e:
-                print(f"خطا در ارسال پیام به {chat_id}: {e}")
+# --- چک کردن دوره‌ای کد جدید ---
+def check_for_new_codes(context: CallbackContext):
+    new_code = fetch_latest_code()
+    if new_code:
+        last_code = get_last_code()
+        if new_code != last_code:
+            print(f"کد جدید پیدا شد: {new_code}")
+            save_last_code(new_code)
+            notify_all_users(context, new_code)
+        else:
+            print("کد جدیدی پیدا نشد.")
     else:
-        print("کد جدیدی برای ارسال نیست.")
+        print("کدی پیدا نشد.")
 
 def main():
     updater = Updater(BOT_TOKEN, use_context=True)
     dp = updater.dispatcher
 
     dp.add_handler(CommandHandler('start', start))
-    dp.add_handler(CallbackQueryHandler(button))
 
-    # اجرای خودکار چک کردن کد جدید هر 5 دقیقه (300 ثانیه)
+    # اجرای چک دوره‌ای هر 5 دقیقه
     job_queue = updater.job_queue
-    job_queue.run_repeating(notify_all_users, interval=300, first=10)
+    job_queue.run_repeating(check_for_new_codes, interval=CHECK_INTERVAL, first=10)
 
     updater.start_polling()
+    print("بات شروع به کار کرد...")
     updater.idle()
 
 if __name__ == '__main__':
